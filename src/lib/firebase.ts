@@ -6,6 +6,8 @@ import {
   signOut,
   onAuthStateChanged,
   User,
+  browserLocalPersistence,
+  setPersistence,
 } from 'firebase/auth';
 import {
   getFirestore,
@@ -35,13 +37,32 @@ export const db = getFirestore(
   (firebaseConfig as any).firestoreDatabaseId
 );
 
-// Initialize Firebase Auth
+// Initialize Firebase Auth (Singleton)
 export const auth = getAuth(app);
 
-// Configure Google Auth Provider with Workspace Scopes (Sheets & Drive)
+// Configure language & local persistence to persist session across page refreshes on Vercel
+try {
+  auth.useDeviceLanguage();
+  setPersistence(auth, browserLocalPersistence).catch((err) => {
+    console.warn('Notice: browserLocalPersistence configuration warning:', err);
+  });
+} catch (initErr) {
+  console.warn('Notice setting auth persistence:', initErr);
+}
+
+// Configure Clean Google Auth Provider for basic user authentication
 export const googleProvider = new GoogleAuthProvider();
-googleProvider.addScope('https://www.googleapis.com/auth/spreadsheets');
-googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
+googleProvider.setCustomParameters({
+  prompt: 'select_account',
+});
+
+// Configure Google Auth Provider with Workspace Scopes (used on-demand for Sheets & Drive export)
+export const workspaceGoogleProvider = new GoogleAuthProvider();
+workspaceGoogleProvider.addScope('https://www.googleapis.com/auth/spreadsheets');
+workspaceGoogleProvider.addScope('https://www.googleapis.com/auth/drive.file');
+workspaceGoogleProvider.setCustomParameters({
+  prompt: 'consent',
+});
 
 // In-memory access token cache (CRITICAL: Do NOT store in localStorage per Workspace skill)
 let cachedAccessToken: string | null = null;
@@ -54,6 +75,103 @@ export const getAccessToken = async (): Promise<string | null> => {
 export const setCachedAccessToken = (token: string | null) => {
   cachedAccessToken = token;
 };
+
+export const requestWorkspaceAccessToken = async (): Promise<string> => {
+  if (cachedAccessToken) return cachedAccessToken;
+  const result = await signInWithPopup(auth, workspaceGoogleProvider);
+  const credential = GoogleAuthProvider.credentialFromResult(result);
+  if (credential?.accessToken) {
+    cachedAccessToken = credential.accessToken;
+    return cachedAccessToken;
+  }
+  throw new Error('Gagal memperoleh token akses Google Workspace.');
+};
+
+/**
+ * Detailed Firebase Auth Error Parser with User-Friendly Indonesian Explanations
+ */
+export interface FirebaseAuthErrorDetail {
+  code: string;
+  name: string;
+  message: string;
+  userMessage: string;
+}
+
+export function parseFirebaseAuthError(error: any): FirebaseAuthErrorDetail {
+  const code = (error?.code || 'auth/unknown-error').toString();
+  const name = (error?.name || 'FirebaseError').toString();
+  const message = (error?.message || 'Terjadi kesalahan autentikasi').toString();
+
+  let userMessage = 'Terjadi kesalahan saat masuk dengan Google. Silakan coba lagi.';
+
+  switch (code) {
+    case 'auth/popup-blocked':
+      userMessage =
+        'Jendela pop-up login diblokir oleh browser. Mohon izinkan pop-up (Allow pop-ups) pada pengaturan browser Anda lalu coba kembali.';
+      break;
+    case 'auth/popup-closed-by-user':
+      userMessage =
+        'Jendela login ditutup sebelum proses selesai. Silakan klik tombol "Masuk dengan Google" kembali.';
+      break;
+    case 'auth/cancelled-popup-request':
+      userMessage =
+        'Proses login sebelumnya dibatalkan karena ada proses baru yang sedang berjalan.';
+      break;
+    case 'auth/unauthorized-domain':
+      userMessage =
+        'Domain website ini (catatan-bundahara.vercel.app) belum diizinkan di Firebase Authentication. Tambahkan domain ini ke Firebase Console > Authentication > Settings > Authorized domains.';
+      break;
+    case 'auth/operation-not-allowed':
+      userMessage =
+        'Metode login Google belum diaktifkan di Firebase Console. Pastikan Google Provider sudah diaktifkan di menu Authentication > Sign-in method.';
+      break;
+    case 'auth/invalid-api-key':
+      userMessage =
+        'Kunci API Firebase tidak valid. Periksa konfigurasi proyek Firebase Anda.';
+      break;
+    case 'auth/app-deleted':
+    case 'auth/app-not-authorized':
+      userMessage =
+        'Aplikasi tidak diotorisasi oleh Firebase. Periksa konfigurasi project.';
+      break;
+    case 'auth/network-request-failed':
+      userMessage =
+        'Koneksi internet bermasalah. Periksa koneksi internet Anda dan coba lagi.';
+      break;
+    case 'auth/account-exists-with-different-credential':
+      userMessage =
+        'Email Anda sudah terdaftar dengan metode autentikasi yang berbeda.';
+      break;
+    case 'auth/user-disabled':
+      userMessage =
+        'Akun pengguna ini telah dinonaktifkan oleh administrator.';
+      break;
+    case 'auth/internal-error':
+      userMessage =
+        'Terjadi kendala internal pada server Firebase. Silakan coba lagi dalam beberapa saat.';
+      break;
+    case 'auth/user-cancelled':
+      userMessage = 'Proses masuk dibatalkan oleh pengguna.';
+      break;
+    default:
+      if (message.includes('popup')) {
+        userMessage =
+          'Jendela pop-up login tidak dapat dibuka. Pastikan browser Anda tidak memblokir jendela pop-up.';
+      } else if (message.includes('network') || message.includes('offline')) {
+        userMessage = 'Koneksi jaringan terputus. Pastikan perangkat Anda terhubung ke internet.';
+      } else {
+        userMessage = `Gagal masuk: ${message}`;
+      }
+      break;
+  }
+
+  return {
+    code,
+    name,
+    message,
+    userMessage,
+  };
+}
 
 // Firestore Error Handling matching strict security specification
 export enum OperationType {
@@ -129,6 +247,11 @@ export const loginWithGoogle = async (): Promise<{
   user: User;
   accessToken: string;
 } | null> => {
+  if (isSigningIn) {
+    console.warn('Login request ignored: sign-in already in progress.');
+    return null;
+  }
+
   try {
     isSigningIn = true;
     const result = await signInWithPopup(auth, googleProvider);
@@ -159,8 +282,13 @@ export const loginWithGoogle = async (): Promise<{
     }
 
     return { user: result.user, accessToken: cachedAccessToken || '' };
-  } catch (error) {
-    console.error('Login error:', error);
+  } catch (error: any) {
+    // Log error to console with error.code, error.message, error.name per requirement 5
+    console.error('Firebase Auth Error:', {
+      code: error?.code,
+      message: error?.message,
+      name: error?.name,
+    });
     throw error;
   } finally {
     isSigningIn = false;

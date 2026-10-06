@@ -1,12 +1,20 @@
 import React from 'react';
-import { Wallet, Send, FileSpreadsheet, Sparkles, ShieldCheck } from 'lucide-react';
+import { Wallet, Send, FileSpreadsheet, Sparkles, ShieldCheck, AlertCircle, X, ExternalLink } from 'lucide-react';
+import { FirebaseAuthErrorDetail } from '../lib/firebase';
 
 interface AuthScreenProps {
   onLogin: () => void;
   isLoading: boolean;
+  error?: FirebaseAuthErrorDetail | null;
+  onClearError?: () => void;
 }
 
-export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, isLoading }) => {
+export const AuthScreen: React.FC<AuthScreenProps> = ({
+  onLogin,
+  isLoading,
+  error,
+  onClearError,
+}) => {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col justify-center items-center px-4 py-8">
       <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 shadow-xl text-center space-y-6">
@@ -47,7 +55,70 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, isLoading }) =>
           </div>
         </div>
 
-        {/* Official Style Google Sign In Button as mandated by Workspace skill */}
+        {/* Firebase Auth Error Alert */}
+        {error && (
+          <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-left space-y-2 animate-in fade-in">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-rose-800 dark:text-rose-300 font-bold text-xs">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>Gagal Masuk</span>
+              </div>
+              {onClearError && (
+                <button
+                  type="button"
+                  onClick={onClearError}
+                  className="p-1 rounded-lg text-rose-400 hover:text-rose-700 dark:hover:text-rose-200 hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Error Code Badge */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-md bg-rose-100 dark:bg-rose-900/70 text-rose-700 dark:text-rose-200 font-semibold">
+                Kode: {error.code}
+              </span>
+            </div>
+
+            {/* Friendly Indonesian Explanation */}
+            <p className="text-xs text-rose-700 dark:text-rose-300 leading-relaxed">
+              {error.userMessage}
+            </p>
+
+            {/* Specific Guidance for Known Firebase Setup Issues */}
+            {error.code === 'auth/unauthorized-domain' && (
+              <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 text-[11px] text-amber-900 dark:text-amber-200 space-y-1">
+                <p className="font-semibold">Langkah Perbaikan di Firebase Console:</p>
+                <ol className="list-decimal pl-4 space-y-0.5">
+                  <li>Buka <b>Firebase Console</b> &gt; <b>Authentication</b></li>
+                  <li>Pilih tab <b>Settings</b> &gt; <b>Authorized domains</b></li>
+                  <li>Klik <b>Add domain</b> dan masukkan: <code className="font-mono font-bold bg-amber-100 dark:bg-amber-900/60 px-1 rounded">catatan-bundahara.vercel.app</code></li>
+                </ol>
+              </div>
+            )}
+
+            {error.code === 'auth/operation-not-allowed' && (
+              <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 text-[11px] text-amber-900 dark:text-amber-200 space-y-1">
+                <p className="font-semibold">Langkah Mengaktifkan Google Sign-in:</p>
+                <ol className="list-decimal pl-4 space-y-0.5">
+                  <li>Buka <b>Firebase Console</b> &gt; <b>Authentication</b></li>
+                  <li>Pilih tab <b>Sign-in method</b></li>
+                  <li>Klik <b>Google</b> dan aktifkan toggle <b>Enable</b> lalu simpan</li>
+                </ol>
+              </div>
+            )}
+
+            {error.code === 'auth/popup-blocked' && (
+              <div className="p-2.5 rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-900/50 text-[11px] text-sky-900 dark:text-sky-200 space-y-1">
+                <p className="font-semibold">Panduan Pop-up Browser:</p>
+                <p>Klik ikon gembok/pengaturan di kolom URL browser Anda, lalu pilih <b>Izinkan Pop-up (Allow pop-ups)</b> untuk domain ini.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Official Style Google Sign In Button */}
         <div className="pt-2">
           <button
             onClick={onLogin}
@@ -76,7 +147,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, isLoading }) =>
                 d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
               />
             </svg>
-            <span>{isLoading ? 'Menghubungkan...' : 'Masuk dengan Google'}</span>
+            <span>{isLoading ? 'Menghubungkan ke Google...' : 'Masuk dengan Google'}</span>
           </button>
         </div>
 

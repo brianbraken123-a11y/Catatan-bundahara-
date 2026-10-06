@@ -1,6 +1,6 @@
 import { Transaction, CATEGORIES_META } from '../types/finance';
 import { formatMonthYear, formatIDR } from './currency';
-import { getAccessToken } from './firebase';
+import { getAccessToken, requestWorkspaceAccessToken } from './firebase';
 
 export interface ExportResult {
   spreadsheetId: string;
@@ -16,9 +16,15 @@ export async function exportTransactionsToGoogleSheets(
   transactions: Transaction[],
   monthStr: string // YYYY-MM
 ): Promise<ExportResult> {
-  const token = await getAccessToken();
+  let token = await getAccessToken();
   if (!token) {
-    throw new Error('Akses Google Workspace belum tersedia. Silakan hubungkan ulang akun Google Anda.');
+    try {
+      token = await requestWorkspaceAccessToken();
+    } catch (e: any) {
+      throw new Error(
+        'Izin akses Google Sheets diperlukan untuk ekspor. Silakan berikan izin pada jendela Google yang muncul.'
+      );
+    }
   }
 
   const formattedMonth = formatMonthYear(monthStr);

@@ -15,6 +15,8 @@ import {
   deleteTransaction,
   testFirestoreConnection,
   getUserProfile,
+  parseFirebaseAuthError,
+  FirebaseAuthErrorDetail,
 } from './lib/firebase';
 import { Transaction, TransactionType, Category } from './types/finance';
 import { getCurrentMonthString } from './lib/currency';
@@ -31,6 +33,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState<FirebaseAuthErrorDetail | null>(null);
 
   // App Theme
   const [darkMode, setDarkMode] = useState<boolean>(() => {
@@ -121,12 +124,24 @@ export default function App() {
 
   // Handlers
   const handleLogin = async () => {
+    if (isLoggingIn) return;
     setIsLoggingIn(true);
+    setLoginError(null);
+
     try {
-      await loginWithGoogle();
+      const res = await loginWithGoogle();
+      if (res?.user) {
+        setUser(res.user);
+      }
     } catch (err: any) {
-      console.error('Login failed:', err);
-      alert('Gagal masuk dengan Google: ' + err.message);
+      const parsed = parseFirebaseAuthError(err);
+      // Requirement 5: Log error to console with error.code, error.message, error.name
+      console.error('Firebase Auth Error:', {
+        code: err?.code || parsed.code,
+        message: err?.message || parsed.message,
+        name: err?.name || parsed.name,
+      });
+      setLoginError(parsed);
     } finally {
       setIsLoggingIn(false);
     }
@@ -210,7 +225,14 @@ export default function App() {
 
   // Not Logged In Screen
   if (!user) {
-    return <AuthScreen onLogin={handleLogin} isLoading={isLoggingIn} />;
+    return (
+      <AuthScreen
+        onLogin={handleLogin}
+        isLoading={isLoggingIn}
+        error={loginError}
+        onClearError={() => setLoginError(null)}
+      />
+    );
   }
 
   return (
