@@ -1,0 +1,105 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default Deny Catch-All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['userId', 'email'])
+        && data.keys().hasOnly(['userId', 'email', 'displayName', 'telegramChatId', 'createdAt', 'updatedAt'])
+        && data.userId is string && data.userId.size() <= 128
+        && data.email is string && data.email.size() <= 256
+        && (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 256))
+        && (!('telegramChatId' in data) || (data.telegramChatId is string && data.telegramChatId.size() <= 64))
+        && (!('createdAt' in data) || data.createdAt is string)
+        && (!('updatedAt' in data) || data.updatedAt is string);
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['userId', 'type', 'amount', 'category', 'description', 'date', 'source'])
+        && data.keys().hasOnly(['id', 'userId', 'type', 'amount', 'category', 'description', 'date', 'source', 'receipt', 'lastEditedFrom', 'editSource', 'editHistory', 'createdAt', 'updatedAt'])
+        && data.userId is string && data.userId.size() <= 128
+        && (data.type == 'income' || data.type == 'expense')
+        && data.amount is number && data.amount >= 0
+        && data.category is string && data.category.size() > 0 && data.category.size() <= 64
+        && data.description is string && data.description.size() <= 500
+        && data.date is string && data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && (data.source == 'web' || data.source == 'telegram' || data.source == 'telegram_receipt')
+        && (!('id' in data) || (data.id is string && data.id.size() <= 128))
+        && (!('editSource' in data) || (data.editSource is string && data.editSource.size() <= 32))
+        && (!('createdAt' in data) || data.createdAt is string)
+        && (!('updatedAt' in data) || data.updatedAt is string);
+    }
+
+    function isValidLinkCode(data) {
+      return data.keys().hasAll(['code', 'userId', 'expiresAt'])
+        && data.keys().hasOnly(['code', 'userId', 'createdAt', 'expiresAt'])
+        && data.code is string && data.code.size() <= 16
+        && data.userId is string && data.userId.size() <= 128
+        && data.expiresAt is string;
+    }
+
+    // User Profiles
+    match /users/{userId} {
+      allow get: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && incoming().userId == request.auth.uid;
+      allow update: if (isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && existing().userId == request.auth.uid && incoming().userId == request.auth.uid)
+        || (incoming().diff(existing()).affectedKeys().hasOnly(['telegramChatId', 'updatedAt']));
+      allow delete: if false;
+    }
+
+    // Transactions
+    match /transactions/{transactionId} {
+      allow get: if isValidId(transactionId) && (
+        (isSignedIn() && existing().userId == request.auth.uid) ||
+        (existing().userId is string)
+      );
+      allow list: if (isSignedIn() && resource.data.userId == request.auth.uid) || (resource.data.userId is string);
+      allow create: if isValidId(transactionId) && isValidTransaction(incoming()) && (
+        ((incoming().source == 'telegram' || incoming().source == 'telegram_receipt') && incoming().userId is string) ||
+        (isSignedIn() && incoming().userId == request.auth.uid)
+      );
+      allow update: if isValidId(transactionId) && isValidTransaction(incoming()) && (
+        (isSignedIn() && existing().userId == request.auth.uid && incoming().userId == request.auth.uid) ||
+        (existing().userId is string && incoming().userId == existing().userId)
+      );
+      allow delete: if isSignedIn() && isValidId(transactionId) && existing().userId == request.auth.uid;
+    }
+
+    // Telegram Pairing Link Codes
+    match /telegramLinkCodes/{code} {
+      allow get: if true;
+      allow create: if isValidLinkCode(incoming());
+      allow delete: if true;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Telegram Internal Collections (Mappings and Update Deduplication)
+    match /telegramUsers/{chatId} {
+      allow read, write: if true;
+    }
+
+    match /telegramUpdates/{updateId} {
+      allow read, write: if true;
+    }
+  }
+}

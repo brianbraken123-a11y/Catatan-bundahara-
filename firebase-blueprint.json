@@ -1,0 +1,96 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile document",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "displayName": { "type": "string", "maxLength": 256 },
+        "telegramChatId": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "email"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Financial income or expense transaction record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "amount": { "type": "number" },
+        "category": { "type": "string", "maxLength": 64 },
+        "description": { "type": "string", "maxLength": 500 },
+        "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "source": { "type": "string", "enum": ["web", "telegram", "telegram_receipt"] },
+        "receipt": { "type": "object" },
+        "lastEditedFrom": { "type": "object" },
+        "editSource": { "type": "string", "maxLength": 32 },
+        "editHistory": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "type", "amount", "category", "description", "date", "source"]
+    },
+    "TelegramLinkCode": {
+      "title": "TelegramLinkCode",
+      "description": "One-time code to link Telegram bot chat with web dashboard user account",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "maxLength": 16 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string" },
+        "expiresAt": { "type": "string" }
+      },
+      "required": ["code", "userId", "expiresAt"]
+    },
+    "TelegramUser": {
+      "title": "TelegramUser",
+      "description": "Telegram chat mapping to userId",
+      "type": "object",
+      "properties": {
+        "chatId": { "type": "string", "maxLength": 64 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "username": { "type": "string", "maxLength": 128 },
+        "linkedAt": { "type": "string" }
+      },
+      "required": ["chatId", "userId"]
+    },
+    "TelegramUpdate": {
+      "title": "TelegramUpdate",
+      "description": "Deduplication log for incoming Telegram updates",
+      "type": "object",
+      "properties": {
+        "updateId": { "type": "string", "maxLength": 64 },
+        "processedAt": { "type": "string" }
+      },
+      "required": ["updateId", "processedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Individual user profile record"
+    },
+    "/transactions/{transactionId}": {
+      "schema": { "$ref": "#/entities/Transaction" },
+      "description": "Financial transaction entries for all users"
+    },
+    "/telegramLinkCodes/{code}": {
+      "schema": { "$ref": "#/entities/TelegramLinkCode" },
+      "description": "Temporary 6-digit link pairing codes"
+    },
+    "/telegramUsers/{chatId}": {
+      "schema": { "$ref": "#/entities/TelegramUser" },
+      "description": "Mapping from Telegram chat ID to application user ID"
+    },
+    "/telegramUpdates/{updateId}": {
+      "schema": { "$ref": "#/entities/TelegramUpdate" },
+      "description": "Webhook update idempotency records"
+    }
+  }
+}

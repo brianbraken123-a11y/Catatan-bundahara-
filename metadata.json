@@ -1,0 +1,7 @@
+{
+  "name": "CatatKas - Personal Finance Tracker",
+  "description": "Aplikasi pencatatan keuangan pribadi mobile-first dengan integrasi Telegram bot, AI Gemini, Google Sheets, dan Google Drive.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
